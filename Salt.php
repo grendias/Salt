@@ -252,8 +252,7 @@ class Salt {
 			}
 		}
 
-		$azDigest = hash('sha512', $sk->toString(), true);
-		$az = FieldElement::fromString($azDigest);
+		$az = self::hash($sk->toString());
 		$az[0] &= 248;
 		$az[31] &= 63;
 		$az[31] |= 64;
@@ -288,8 +287,7 @@ class Salt {
 
 		$pk = $sk->slice(32, 32);
 
-		$azDigest = hash('sha512', $sk->slice(0,32)->toString(), true);
-		$az = FieldElement::fromString($azDigest);
+		$az = self::hash($sk->slice(0,32)->toString());
 		$az[0] &= 248;
 		$az[31] &= 63;
 		$az[31] |= 64;
@@ -300,9 +298,8 @@ class Salt {
 		$sm->copy($m, $mlen, 64);
 		$sm->copy($az, 32, 32, 32);
 
-		$nonceDigest = hash('sha512', $sm->slice(32, $mlen+32)->toString(), true);
-		$nonce = FieldElement::fromString($nonceDigest);
-
+		$nonce = self::hash($sm->slice(32,$mlen+32)->toString());
+		
 		$sm->copy($pk, 32, 32);
 
 		$ed = Ed25519::instance();
@@ -311,8 +308,7 @@ class Salt {
 		$ed->geScalarmultBase($R, $nonce);
 		$ed->GeExtendedtoBytes($sm, $R);
 
-		$hramDigest = hash('sha512', $sm->toString(), true);
-		$hram = FieldElement::fromString($hramDigest);
+		$hram = self::hash($sm->toString());
 		$ed->scReduce($hram);
 
 		$rest = new FieldElement(32);
@@ -348,14 +344,14 @@ class Salt {
 		$d = 0;
 		for ($i = 0;$i < 32;++$i) $d |= $pk[$i];
 		if ($d === 0) return false;
-
-		$hs = hash_init('sha512');
-		hash_update($hs, $sm->slice(0, 32)->toString());
-		hash_update($hs, $pk->toString());
-		hash_update($hs, $sm->slice(64, $smlen-64)->toString());
-		$hDigest = hash_final($hs, true);
-
-		$h = FieldElement::fromString($hDigest);
+		
+		$b2b = new Blake2b();
+		$ctx = $b2b->init();
+		$b2b->update($ctx, $sm->slice(0, 32), 32);
+		$b2b->update($ctx, $pk, 32);
+		$b2b->update($ctx, $sm->slice(64, $smlen - 64), $sm->slice(64, $smlen - 64)->count());
+		$h = new FieldElement(64);
+		$b2b->finish($ctx, $h);
 		$ed->scReduce($h);
 
 		$R = new GeProjective();
